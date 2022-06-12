@@ -1,6 +1,6 @@
 // Copyright (c) 2020 Ghaith Hachem and Mathias Rieder
 use crate::ast::{
-    AstStatement, DataType, DataTypeDeclaration, DirectAccessType, Operator, Pou, SourceRange,
+    AstStatement, DirectAccessType, Operator, SourceRange,
 };
 use crate::parser::tests::{literal_int, ref_to};
 use crate::test_utils::tests::parse;
@@ -2681,31 +2681,37 @@ fn sized_string_as_function_return() {
     ",
     );
 
-    let expected = Pou {
-        name: "foo".into(),
-        poly_mode: None,
-        pou_type: crate::ast::PouType::Function,
-        return_type: Some(DataTypeDeclaration::DataTypeDefinition {
-            data_type: DataType::StringType {
-                name: None,
-                is_wide: false,
-                size: Some(AstStatement::LiteralInteger {
-                    value: 10,
-                    location: SourceRange::undefined(),
-                    id: 0,
-                }),
+    insta::assert_debug_snapshot!(ast.units[0], @r###"
+    POU {
+        name: "foo",
+        variable_blocks: [],
+        pou_type: Function,
+        return_type: Some(
+            VariableBlock {
+                variables: [
+                    Variable {
+                        name: "foo",
+                        data_type: DataTypeDefinition {
+                            data_type: StringType {
+                                name: None,
+                                is_wide: false,
+                                size: Some(
+                                    LiteralInteger {
+                                        value: 10,
+                                    },
+                                ),
+                            },
+                        },
+                    },
+                ],
+                variable_block_type: Return(
+                    ByVal,
+                ),
             },
-            location: SourceRange::undefined(),
-            scope: Some("foo".into()),
-        }),
-        variable_blocks: vec![],
-        location: SourceRange::undefined(),
-        name_location: SourceRange::undefined(),
-        generics: vec![],
-        linkage: crate::ast::LinkageType::Internal,
-    };
+        ),
+    }
+    "###); 
 
-    assert_eq!(format!("{:?}", ast.units[0]), format!("{:?}", expected));
     assert_eq!(diagnostics.is_empty(), true);
 }
 
@@ -2718,42 +2724,7 @@ fn array_type_as_function_return() {
     ",
     );
 
-    let expected = Pou {
-        name: "foo".into(),
-        poly_mode: None,
-        pou_type: crate::ast::PouType::Function,
-        return_type: Some(DataTypeDeclaration::DataTypeDefinition {
-            data_type: DataType::ArrayType {
-                referenced_type: Box::new(DataTypeDeclaration::DataTypeReference {
-                    referenced_type: "INT".into(),
-                    location: SourceRange::undefined(),
-                }),
-                bounds: AstStatement::RangeStatement {
-                    start: Box::new(AstStatement::LiteralInteger {
-                        id: 0,
-                        location: SourceRange::undefined(),
-                        value: 0,
-                    }),
-                    end: Box::new(AstStatement::LiteralInteger {
-                        id: 0,
-                        location: SourceRange::undefined(),
-                        value: 10,
-                    }),
-                    id: 0,
-                },
-                name: None,
-            },
-            location: SourceRange::undefined(),
-            scope: Some("foo".into()),
-        }),
-        variable_blocks: vec![],
-        location: SourceRange::undefined(),
-        name_location: SourceRange::undefined(),
-        generics: vec![],
-        linkage: crate::ast::LinkageType::Internal,
-    };
-
-    assert_eq!(format!("{:?}", ast.units[0]), format!("{:?}", expected));
+    insta::assert_snapshot!(format!("{:?}", ast.units), @r###"[POU { name: "foo", variable_blocks: [], pou_type: Function, return_type: Some(VariableBlock { variables: [Variable { name: "foo", data_type: DataTypeDefinition { data_type: ArrayType { name: None, bounds: RangeStatement { start: LiteralInteger { value: 0 }, end: LiteralInteger { value: 10 } }, referenced_type: DataTypeReference { referenced_type: "INT" } } } }], variable_block_type: Return(ByVal) }) }]"###);
     assert_eq!(diagnostics.is_empty(), true);
 }
 

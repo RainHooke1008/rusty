@@ -103,28 +103,28 @@ pub fn visit_pou(index: &mut Index, pou: &Pou) {
     }
 
     //register a function's return type as a member variable
-    let return_type_name = pou
-        .return_type
-        .as_ref()
-        .and_then(|it| it.get_name())
-        .unwrap_or(VOID_TYPE);
-    if pou.return_type.is_some() {
+    let return_type_name = if let Some(return_type) = &pou.return_type {
+        let retun_var = return_type.variables.first().expect("Return without variable"); 
         member_names.push(pou.get_return_name().into());
         let source_location = SourceRange::new(pou.location.get_end()..pou.location.get_end());
+        let variable_type_name = retun_var.data_type.get_name().unwrap_or(VOID_TYPE);
         index.register_member_variable(
             MemberInfo {
                 container_name: &pou.name,
-                variable_name: pou.get_return_name(),
-                variable_linkage: ArgumentType::ByVal(VariableType::Return),
-                variable_type_name: return_type_name,
+                variable_name: &retun_var.name,
+                variable_linkage: get_declaration_type_for(&return_type),
+                variable_type_name,
                 is_constant: false, //return variables are not constants
                 binding: None,
             },
             None,
             source_location,
             count,
-        )
-    }
+        );
+        variable_type_name
+    } else {
+        VOID_TYPE
+    };
 
     let has_varargs = varargs.is_some();
     let datatype = typesystem::DataType {
@@ -203,6 +203,7 @@ fn get_declaration_type_for(block: &VariableBlock) -> ArgumentType {
         VariableBlockType::InOut
             | VariableBlockType::Output
             | VariableBlockType::Input(ArgumentProperty::ByRef)
+            | VariableBlockType::Return(ArgumentProperty::ByRef)
     ) {
         ArgumentType::ByRef(get_variable_type_from_block(block))
     } else {
@@ -292,6 +293,7 @@ fn get_variable_type_from_block(block: &VariableBlock) -> VariableType {
         VariableBlockType::Output => VariableType::Output,
         VariableBlockType::Global => VariableType::Global,
         VariableBlockType::InOut => VariableType::InOut,
+        VariableBlockType::Return(_) => VariableType::Return,
     }
 }
 

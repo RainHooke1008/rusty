@@ -490,11 +490,17 @@ impl<'ink, 'b> ExpressionCodeGenerator<'ink, 'b> {
                     operator.get_location(),
                 )
             })?;
+
+        //If the function has a return type by ref, declare a variable here for it
+        //TODO: Possibly steal the one it's being assigned into?
+
         //If the target is a function, declare the struct locally
         //Assign all parameters into the struct values
         let call_result = builder
             .build_call(function, &arguments_list, "call")
             .try_as_basic_value();
+
+        //If the return type is byref, use it as the call_result
 
         // we return an uninitialized int pointer for void methods :-/
         // dont deref it!!

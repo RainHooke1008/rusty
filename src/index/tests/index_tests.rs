@@ -1358,7 +1358,7 @@ fn pre_processing_generates_generic_types() {
         "INT"
     );
     assert_eq!(
-        pou.return_type.as_ref().unwrap().get_name().unwrap(),
+        pou.get_return_type().as_ref().and_then(|it| it.get_name()).unwrap(),
         "__myFunc__G"
     );
 }

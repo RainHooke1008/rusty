@@ -358,7 +358,7 @@ struct Wrapper<T> {
 ///
 /// Unsafe by design, it dereferences a pointer
 #[allow(dead_code)]
-unsafe extern "C" fn string_id(input: *const i8) -> Wrapper<[u8; 81]> {
+unsafe extern "C" fn string_id_fix(input: *const i8) -> Wrapper<[u8; 81]> {
     let mut res = [0; 81];
     let bytes = CStr::from_ptr(input).to_bytes();
     for (index, val) in bytes.iter().enumerate() {
@@ -373,7 +373,27 @@ unsafe extern "C" fn string_id(input: *const i8) -> Wrapper<[u8; 81]> {
 ///
 /// Unsafe by design, it dereferences a pointer
 #[allow(dead_code)]
-unsafe extern "C" fn wstring_id(input: *const i16) -> Wrapper<[u16; 81]> {
+unsafe extern "C" fn string_id(input: *const i8, target : *mut i8) {
+    let mut working_target = target;
+    let mut working_input = input;
+    let mut current = *working_input;
+    let size = std::mem::size_of::<i8>();
+    while current != 0 {
+        *working_target = current;
+        working_input = working_input.add(size);
+        working_target = working_target.add(size);
+        current = *working_input;
+    }
+}
+
+
+/// .
+///
+/// # Safety
+///
+/// Unsafe by design, it dereferences a pointer
+#[allow(dead_code)]
+unsafe extern "C" fn wstring_id_fix(input: *const i16) -> Wrapper<[u16; 81]> {
     let mut res = [0; 81];
     let bytes = std::slice::from_raw_parts(input, 81);
     for (index, val) in bytes.iter().enumerate() {
@@ -381,6 +401,27 @@ unsafe extern "C" fn wstring_id(input: *const i16) -> Wrapper<[u16; 81]> {
     }
     Wrapper { inner: res }
 }
+
+
+/// .
+///
+/// # Safety
+///
+/// Unsafe by design, it dereferences a pointer
+#[allow(dead_code)]
+unsafe extern "C" fn wstring_id(input: *const i16, target : *mut i16) {
+    let mut working_target = target;
+    let mut working_input = input;
+    let mut current = *working_input;
+    let size = std::mem::size_of::<i16>();
+    while current != 0 {
+        *working_target = current;
+        working_input = working_input.add(size);
+        working_target = working_target.add(size);
+        current = *working_input;
+    }
+}
+
 
 #[test]
 fn string_as_function_parameters() {
@@ -429,7 +470,7 @@ fn string_as_function_parameters() {
 
     let fn_value = code_gen.module.get_function("func").unwrap();
 
-    exec_engine.add_global_mapping(&fn_value, string_id as usize);
+    exec_engine.add_global_mapping(&fn_value, string_id_fix as usize);
 
     let _: i32 = run(&exec_engine, "main", &mut main_type);
     let res = CStr::from_bytes_with_nul(&main_type.res[..6])
@@ -486,7 +527,7 @@ fn wstring_as_function_parameters() {
 
     let fn_value = code_gen.module.get_function("func").unwrap();
 
-    exec_engine.add_global_mapping(&fn_value, wstring_id as usize);
+    exec_engine.add_global_mapping(&fn_value, wstring_id_fix as usize);
 
     let _: i32 = run(&exec_engine, "main", &mut main_type);
 
@@ -541,7 +582,7 @@ fn string_as_function_parameters_cast() {
 
     let fn_value = code_gen.module.get_function("func").unwrap();
 
-    exec_engine.add_global_mapping(&fn_value, string_id as usize);
+    exec_engine.add_global_mapping(&fn_value, string_id_fix as usize);
 
     let _: i32 = run(&exec_engine, "main", &mut main_type);
     let res = CStr::from_bytes_with_nul(&main_type.res[..6])
@@ -598,10 +639,81 @@ fn wstring_as_function_parameters_cast() {
 
     let fn_value = code_gen.module.get_function("func").unwrap();
 
-    exec_engine.add_global_mapping(&fn_value, wstring_id as usize);
+    exec_engine.add_global_mapping(&fn_value, wstring_id_fix as usize);
 
     let _: i32 = run(&exec_engine, "main", &mut main_type);
 
     let res = String::from_utf16_lossy(&main_type.res[..5]);
     assert_eq!(res, "hello");
+}
+
+#[test]
+fn variable_sized_string_output() {
+    let src = r#"
+    @EXTERNAL
+    FUNCTION func : {ref} STRING
+        VAR_INPUT {ref}
+            in : STRING;
+        END_VAR
+    END_FUNCTION
+
+    @EXTERNAL
+    FUNCTION func_w : {ref} WSTRING
+        VAR_INPUT {ref}
+            in : WSTRING;
+        END_VAR
+    END_FUNCTION
+
+    PROGRAM main
+	VAR
+		res : STRING[100];
+        res_w : WSTRING[100];
+	END_VAR
+        res := func('1111111111222222222233333333334444444444555555555566666666667777777777888888888899999999990000000000');
+		res_w := func_w("1111111111222222222233333333334444444444555555555566666666667777777777888888888899999999990000000000");
+    END_PROGRAM
+    "#;
+
+    #[allow(dead_code)]
+    #[repr(C)]
+    struct MainType {
+        res: [u8; 101],
+        res_w: [u16; 101],
+    }
+
+    let mut main_type = MainType { res: [0; 101], res_w: [0; 101] };
+
+    Target::initialize_native(&InitializationConfig::default()).unwrap();
+    let context: Context = Context::create();
+    let source = SourceCode {
+        path: "string_test.st".to_string(),
+        source: src.to_string(),
+    };
+    let (_, code_gen) = compile_module(
+        &context,
+        vec![source],
+        vec![],
+        None,
+        Diagnostician::default(),
+    )
+    .unwrap();
+    let exec_engine = code_gen
+        .module
+        .create_jit_execution_engine(inkwell::OptimizationLevel::None)
+        .unwrap();
+
+    let fn_value = code_gen.module.get_function("func").unwrap();
+    let fn_w_value = code_gen.module.get_function("func_w").unwrap();
+
+
+    exec_engine.add_global_mapping(&fn_value, string_id as usize);
+    exec_engine.add_global_mapping(&fn_w_value, wstring_id as usize);
+
+
+    let _: i32 = run(&exec_engine, "main", &mut main_type);
+
+    let res = String::from_utf8_lossy(&main_type.res[..100]);
+    let res_w = String::from_utf16_lossy(&main_type.res_w[..100]);
+    assert_eq!(res, "1111111111222222222233333333334444444444555555555566666666667777777777888888888899999999990000000000");
+    assert_eq!(res_w, "1111111111222222222233333333334444444444555555555566666666667777777777888888888899999999990000000000");
 }

@@ -22,7 +22,7 @@ pub struct Pou {
     pub name: String,
     pub variable_blocks: Vec<VariableBlock>,
     pub pou_type: PouType,
-    pub return_type: Option<DataTypeDeclaration>,
+    pub return_type: Option<VariableBlock>,
     /// the SourceRange of the whole POU
     pub location: SourceRange,
     /// the SourceRange of the POU's name
@@ -196,6 +196,14 @@ impl Pou {
     pub fn calc_return_name(pou_name: &str) -> &str {
         pou_name.split('.').last().unwrap_or_default()
     }
+
+    pub fn get_return_type(&self) -> Option<&DataTypeDeclaration> {
+        self.return_type.as_ref().and_then(|it| it.variables.first()).map(|it| &it.data_type)
+    }
+
+    pub fn get_return_type_mut(&mut self) -> Option<&mut DataTypeDeclaration> {
+        self.return_type.as_mut().and_then(|it| it.variables.first_mut()).map(|it| &mut it.data_type)
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -278,6 +286,7 @@ pub enum VariableBlockType {
     Output,
     Global,
     InOut,
+    Return(ArgumentProperty),
 }
 
 #[derive(Debug, Copy, PartialEq, Clone)]

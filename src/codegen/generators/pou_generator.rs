@@ -162,6 +162,7 @@ impl<'ink, 'cg> PouGenerator<'ink, 'cg> {
             Some(r_type) => Some(self.llvm_index.get_associated_type(r_type.get_name())?),
             None => None,
         };
+        //If the return type is byref, add it to the parameters, and return None as return type
 
         let variadic = global_index
             .find_effective_type_info(implementation.get_type_name())
@@ -363,6 +364,8 @@ impl<'ink, 'cg> PouGenerator<'ink, 'cg> {
             let parameter_name = m.get_name();
 
             let (name, variable) = if m.is_return() {
+                //If the return variable is byRef, treat it like a param, it will be the last parameter of the function
+                //current_function.get_last_param()
                 let return_type = index.get_associated_type(m.get_type_name())?;
                 (
                     Pou::calc_return_name(type_name),
@@ -571,6 +574,7 @@ impl<'ink, 'cg> PouGenerator<'ink, 'cg> {
                     )
                 })?;
             let loaded_value = self.llvm.load_pointer(&value_ptr, var_name.as_str());
+            //If the return statement is a ref, do not build the retun, store the value in the target variable instead
             self.llvm.builder.build_return(Some(&loaded_value));
         } else {
             self.llvm.builder.build_return(None);

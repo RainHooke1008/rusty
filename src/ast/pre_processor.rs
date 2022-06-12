@@ -210,21 +210,26 @@ fn preprocess_generic_structs(pou: &mut Pou) -> Vec<UserTypeDeclaration> {
     {
         replace_generic_type_name(&mut var.data_type, &generic_types);
     }
-    if let Some(datatype) = pou.return_type.as_mut() {
+    if let Some(datatype) = pou.get_return_type_mut() {
         replace_generic_type_name(datatype, &generic_types);
     };
     types
 }
 
 fn preprocess_return_type(pou: &mut Pou, types: &mut Vec<UserTypeDeclaration>) {
-    if let Some(return_type) = &pou.return_type {
+    if let Some(return_type) = pou.get_return_type() {
         if should_generate_implicit(return_type) {
             let type_name = format!("__{}_return", &pou.name);
             let type_ref = DataTypeDeclaration::DataTypeReference {
                 referenced_type: type_name.clone(),
                 location: return_type.get_location(),
             };
-            let datatype = std::mem::replace(&mut pou.return_type, Some(type_ref));
+            
+            let datatype = if let Some(dt) = pou.get_return_type_mut() {
+                Some(std::mem::replace(dt, type_ref))
+            } else {
+                None
+            };
             if let Some(DataTypeDeclaration::DataTypeDefinition {
                 mut data_type,
                 location,

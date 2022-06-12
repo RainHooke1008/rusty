@@ -164,7 +164,7 @@ fn parse_pou(
 
             let return_type = if pou_type != PouType::Class {
                 // parse an optional return type
-                parse_return_type(lexer, &pou_type)
+                parse_return_type(lexer, &pou_type, Pou::calc_return_name(&name))
             } else {
                 // classes do not have a return type
                 None
@@ -316,43 +316,73 @@ fn parse_polymorphism_mode(
     }
 }
 
-fn parse_return_type(lexer: &mut ParseSession, pou_type: &PouType) -> Option<DataTypeDeclaration> {
+fn parse_return_type(
+    lexer: &mut ParseSession,
+    pou_type: &PouType,
+    name: &str,
+) -> Option<VariableBlock> {
     let start_return_type = lexer.range().start;
     if lexer.allow(&KeywordColon) {
-        if let Some((declaration, initializer)) = parse_data_type_definition(lexer, None) {
-            if let Some(init) = initializer {
-                lexer.accept_diagnostic(Diagnostic::unexpected_initializer_on_function_return(
-                    init.get_location(),
-                ));
-            }
-
-            if !matches!(pou_type, PouType::Function | PouType::Method { .. }) {
-                lexer.accept_diagnostic(Diagnostic::return_type_not_supported(
-                    pou_type,
-                    SourceRange::new(start_return_type..lexer.last_range.end),
-                ));
-            }
-
-            if let DataTypeDeclaration::DataTypeDefinition { data_type, .. } = &declaration {
-                if matches!(
-                    data_type,
-                    DataType::EnumType { .. } | DataType::StructType { .. }
-                ) {
-                    lexer.accept_diagnostic(Diagnostic::function_unsupported_return_type(
-                        &declaration,
-                    ))
-                }
-            }
-            Some(declaration)
+        let variable_block_type = if lexer.allow(&PropertyByRef) {
+            VariableBlockType::Return(ArgumentProperty::ByRef)
         } else {
-            //missing return type
-            lexer.accept_diagnostic(Diagnostic::unexpected_token_found(
-                "Datatype",
-                lexer.slice(),
-                SourceRange::new(lexer.range()),
-            ));
-            None
-        }
+            VariableBlockType::Return(ArgumentProperty::ByVal)
+        };
+
+        let declaration =
+            if let Some((declaration, initializer)) = parse_data_type_definition(lexer, None) {
+                if let Some(init) = initializer {
+                    lexer.accept_diagnostic(Diagnostic::unexpected_initializer_on_function_return(
+                        init.get_location(),
+                    ));
+                }
+
+                if !matches!(pou_type, PouType::Function | PouType::Method { .. }) {
+                    lexer.accept_diagnostic(Diagnostic::return_type_not_supported(
+                        pou_type,
+                        SourceRange::new(start_return_type..lexer.last_range.end),
+                    ));
+                }
+
+                if let DataTypeDeclaration::DataTypeDefinition { data_type, .. } = &declaration {
+                    if matches!(
+                        data_type,
+                        DataType::EnumType { .. } | DataType::StructType { .. }
+                    ) {
+                        lexer.accept_diagnostic(Diagnostic::function_unsupported_return_type(
+                            &declaration,
+                        ))
+                    }
+                }
+                Some(declaration)
+            } else {
+                //missing return type
+                lexer.accept_diagnostic(Diagnostic::unexpected_token_found(
+                    "Datatype",
+                    lexer.slice(),
+                    SourceRange::new(lexer.range()),
+                ));
+                None
+            };
+        declaration.map(|it| {
+            let location = it.get_location();
+            let ret = Variable {
+                name: name.to_string(),
+                data_type: it,
+                initializer: None,
+                address: None,
+                location,
+            };
+            VariableBlock {
+                access: AccessModifier::Protected,
+                constant: false,
+                retain: false,
+                variables : vec![ret],
+                variable_block_type,
+                linkage: LinkageType::Internal,
+                location: (start_return_type..lexer.last_range.end).into(),
+            }
+        })
     } else {
         None
     }
@@ -380,7 +410,7 @@ fn parse_method(
         let overriding = lexer.allow(&KeywordOverride);
         let (name, name_location) = parse_identifier(lexer)?;
         let generics = parse_generics(lexer);
-        let return_type = parse_return_type(lexer, &pou_type);
+        let return_type = parse_return_type(lexer, &pou_type, Pou::calc_return_name(&name));
 
         let mut variable_blocks = vec![];
         while lexer.token == KeywordVar

@@ -11,13 +11,23 @@ fn simple_foo_function_can_be_parsed() {
     let prg = &result.units[0];
     assert_eq!(prg.pou_type, PouType::Function);
     assert_eq!(prg.name, "foo");
-    assert_eq!(
-        prg.return_type.as_ref().unwrap(),
-        &DataTypeDeclaration::DataTypeReference {
-            referenced_type: "INT".to_string(),
-            location: (15..18).into(),
-        }
-    );
+    insta::assert_debug_snapshot!(prg.return_type, @r###"
+    Some(
+        VariableBlock {
+            variables: [
+                Variable {
+                    name: "foo",
+                    data_type: DataTypeReference {
+                        referenced_type: "INT",
+                    },
+                },
+            ],
+            variable_block_type: Return(
+                ByVal,
+            ),
+        },
+    )
+    "###); 
 }
 
 #[test]
@@ -119,61 +129,57 @@ fn varargs_parameters_can_be_parsed() {
     );
 
     let x = &parse_result.units[0];
-    let expected = Pou {
-        name: "foo".into(),
-        pou_type: PouType::Function,
-        return_type: Some(DataTypeDeclaration::DataTypeReference {
-            referenced_type: "DINT".into(),
-            location: SourceRange::undefined(),
-        }),
-        variable_blocks: vec![VariableBlock {
-            constant: false,
-            access: AccessModifier::Protected,
-            retain: false,
-            variable_block_type: VariableBlockType::Input(ArgumentProperty::ByVal),
-            location: SourceRange::undefined(),
-            linkage: LinkageType::Internal,
-            variables: vec![
-                Variable {
-                    name: "args1".into(),
-                    data_type: DataTypeDeclaration::DataTypeDefinition {
-                        data_type: DataType::VarArgs {
-                            referenced_type: None,
+    insta::assert_debug_snapshot!(x, @r###"
+    POU {
+        name: "foo",
+        variable_blocks: [
+            VariableBlock {
+                variables: [
+                    Variable {
+                        name: "args1",
+                        data_type: DataTypeDefinition {
+                            data_type: VarArgs {
+                                referenced_type: None,
+                            },
                         },
-                        location: SourceRange::undefined(),
-                        scope: Some("foo".into()),
                     },
-                    initializer: None,
-                    address: None,
-                    location: SourceRange::undefined(),
-                },
-                Variable {
-                    name: "args2".into(),
-                    data_type: DataTypeDeclaration::DataTypeDefinition {
-                        data_type: DataType::VarArgs {
-                            referenced_type: Some(Box::new(
-                                DataTypeDeclaration::DataTypeReference {
-                                    referenced_type: "INT".into(),
-                                    location: SourceRange::undefined(),
-                                },
-                            )),
+                    Variable {
+                        name: "args2",
+                        data_type: DataTypeDefinition {
+                            data_type: VarArgs {
+                                referenced_type: Some(
+                                    DataTypeReference {
+                                        referenced_type: "INT",
+                                    },
+                                ),
+                            },
                         },
-                        location: SourceRange::undefined(),
-                        scope: Some("foo".into()),
                     },
-                    initializer: None,
-                    address: None,
-                    location: SourceRange::undefined(),
-                },
-            ],
-        }],
-        location: SourceRange::undefined(),
-        name_location: SourceRange::undefined(),
-        poly_mode: None,
-        generics: vec![],
-        linkage: crate::ast::LinkageType::Internal,
-    };
-    assert_eq!(format!("{:#?}", expected), format!("{:#?}", x).as_str());
+                ],
+                variable_block_type: Input(
+                    ByVal,
+                ),
+            },
+        ],
+        pou_type: Function,
+        return_type: Some(
+            VariableBlock {
+                variables: [
+                    Variable {
+                        name: "foo",
+                        data_type: DataTypeReference {
+                            referenced_type: "DINT",
+                        },
+                    },
+                ],
+                variable_block_type: Return(
+                    ByVal,
+                ),
+            },
+        ),
+    }
+    "###); 
+
 }
 
 // Tests for function return types
@@ -365,7 +371,7 @@ fn function_inline_struct_return_unsupported() {
 
 #[test]
 fn simple_fb_with_var_temp_can_be_parsed() {
-    let function = "FUNCTION_BLOCK buz VAR_TEMP x : INT; END_VAR END_FUNCTION_BLOCK";
+    let function = "FUNCTION_BLOCK buz : INT VAR_TEMP x : INT; END_VAR END_FUNCTION_BLOCK";
     let result = parse(function).0;
 
     let prg = &result.units[0];
@@ -387,7 +393,7 @@ fn simple_fb_with_var_temp_can_be_parsed() {
 
 #[test]
 fn simple_function_with_var_temp_can_be_parsed() {
-    let function = "FUNCTION buz VAR_TEMP x : INT; END_VAR END_FUNCTION";
+    let function = "FUNCTION buz : INT VAR_TEMP x : INT; END_VAR END_FUNCTION";
     let result = parse(function).0;
 
     let prg = &result.units[0];
@@ -409,7 +415,7 @@ fn simple_function_with_var_temp_can_be_parsed() {
 
 #[test]
 fn var_input_by_ref_parsed() {
-    let function = "FUNCTION buz VAR_INPUT {ref} x : INT; END_VAR END_FUNCTION";
+    let function = "FUNCTION buz : INT VAR_INPUT {ref} x : INT; END_VAR END_FUNCTION";
     let result = parse(function).0;
 
     let prg = &result.units[0];
@@ -428,6 +434,53 @@ fn var_input_by_ref_parsed() {
         ],
         variable_block_type: Input(
             ByRef,
+        ),
+    }
+    "###)
+}
+
+
+#[test]
+fn function_output_by_ref() {
+    let function = "FUNCTION buz : {ref} INT VAR_INPUT x : INT; END_VAR END_FUNCTION";
+    let result = parse(function).0;
+
+    let prg = &result.units[0];
+    let ast_string = format!("{:#?}", prg);
+
+    insta::assert_snapshot!(ast_string, @r###"
+    POU {
+        name: "buz",
+        variable_blocks: [
+            VariableBlock {
+                variables: [
+                    Variable {
+                        name: "x",
+                        data_type: DataTypeReference {
+                            referenced_type: "INT",
+                        },
+                    },
+                ],
+                variable_block_type: Input(
+                    ByVal,
+                ),
+            },
+        ],
+        pou_type: Function,
+        return_type: Some(
+            VariableBlock {
+                variables: [
+                    Variable {
+                        name: "buz",
+                        data_type: DataTypeReference {
+                            referenced_type: "INT",
+                        },
+                    },
+                ],
+                variable_block_type: Return(
+                    ByRef,
+                ),
+            },
         ),
     }
     "###)
